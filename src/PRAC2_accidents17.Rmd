@@ -1,0 +1,683 @@
+---
+title: 'Tipología y ciclo de vida de los datos: PRAC2 - Limpieza y análisis de datos'
+author: "Autores: Víctor María Cardoner Álvarez / José Oriol Bielsa Nogaledo"
+date: "Junio 2021"
+output:
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+  word_document: default
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+warning = FALSE
+```
+
+```{r setup2, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(sf)
+library(leaflet)
+library(mapview)
+library(VIM)
+library(plyr)
+library(dplyr)
+library(nortest)
+```
+
+******
+# Enunciado
+******
+
+## Descripción del dataset. ¿Por qué es importante y qué pregunta/problema pretende responder?
+
+**Visión general del dataset**
+Vamos a cargar el datset para analizar los diferentes valores de cada variable.
+
+```{r message= FALSE, warning=FALSE}
+df_raw <- read.csv("accidents_2017.csv", sep=',', encoding='UTF-8')
+dim(df_raw)
+str(df_raw)
+```
+
+**Distrito**
+```{r message= FALSE, warning=FALSE}
+# Varable Distrito
+unique(df_raw["District.Name"])
+```
+**Barrio**
+```{r message= FALSE, warning=FALSE}
+unique(df_raw["Neighborhood.Name"])
+```
+**Número de calles**
+```{r message= FALSE, warning=FALSE}
+length(unique(df_raw[["Street"]]))
+```
+**Parte del día**
+```{r message= FALSE, warning=FALSE}
+unique(df_raw["Part.of.the.day"])
+```
+**Víctimas leves**
+```{r message= FALSE, warning=FALSE}
+unique(df_raw["Mild.injuries"])
+summary(df_raw["Mild.injuries"])
+```
+**Víctimas graves**
+```{r message= FALSE, warning=FALSE}
+unique(df_raw["Serious.injuries"])
+summary(df_raw["Serious.injuries"])
+```
+**Víctimas totales**
+```{r message= FALSE, warning=FALSE}
+unique(df_raw["Victims"])
+summary(df_raw["Victims"])
+```
+**Vehículos involucrados**
+```{r message= FALSE, warning=FALSE}
+unique(df_raw["Vehicles.involved"])
+summary(df_raw["Vehicles.involved"])
+
+```
+
+## Integración y selección de los datos de interés a analizar.
+
+Procedemos a aplicar estas transformaciones especificadas en la memoria PDF:
+
+```{r}
+# Creamos nueva variable para el dataset tratado
+df_proc <- df_raw
+
+# Prescindimos de variable Street
+df_proc <- subset(df_proc, select = -c(Street))
+
+# Creamos la variable Hour.Span
+df_proc$Hour.Span <- df_proc$Hour
+df_proc[df_proc$Hour %in% c("0", "1", "2"),]$Hour.Span <- "00-03h"
+df_proc[df_proc$Hour %in% c("3", "4", "5"),]$Hour.Span <- "03-06h"
+df_proc[df_proc$Hour %in% c("6", "7", "8"),]$Hour.Span <- "06-09h"
+df_proc[df_proc$Hour %in% c("9", "10", "11"),]$Hour.Span <- "09-12h"
+df_proc[df_proc$Hour %in% c("12", "13", "14"),]$Hour.Span <- "12-15h"
+df_proc[df_proc$Hour %in% c("15", "16", "17"),]$Hour.Span <- "15-18h"
+df_proc[df_proc$Hour %in% c("18", "19", "20"),]$Hour.Span <- "18-21h"
+df_proc[df_proc$Hour %in% c("21", "22", "23"),]$Hour.Span <- "21-00h"
+df_proc$Hour.Span <- as.factor(df_proc$Hour.Span)
+
+# Prescindimos de Hour y Part.of.day
+df_proc <- subset(df_proc, select = -c(Hour, Part.of.the.day))
+
+# Transformamos Day en una variable categórica Day.Span
+df_proc$Day.Span <- df_proc$Day
+df_proc[df_proc$Day %in% c("1", "2", "3", "4", "5"),]$Day.Span <- "1-5"
+df_proc[df_proc$Day %in% c("6", "7", "8", "9", "10"),]$Day.Span <- "6-10"
+df_proc[df_proc$Day %in% c("11", "12", "13", "14", "15"),]$Day.Span <- "11-15"
+df_proc[df_proc$Day %in% c("16", "17", "18", "19", "20"),]$Day.Span <- "16-20"
+df_proc[df_proc$Day %in% c("21", "22", "23", "24", "25"),]$Day.Span <- "21-25"
+df_proc[df_proc$Day %in% c("26", "27", "28", "29", "30", "31"),]$Day.Span <- "26-31"
+df_proc$Day.Span <- as.factor(df_proc$Day.Span)
+df_proc <- subset(df_proc, select = -c(Day))
+
+# Creamos nueva variable categórica Weekday.Weekend
+df_proc$Weekday <- as.character(df_proc$Weekday)
+df_proc$Weekday.Weekend <- df_proc$Weekday
+df_proc[df_proc$Weekday %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"),]$Weekday.Weekend <- "Weekday"
+df_proc[df_proc$Weekday %in% c("Saturday", "Sunday"),]$Weekday.Weekend <- "Weekend"
+df_proc$Weekday <- as.factor(df_proc$Weekday)
+df_proc$Weekday.Weekend <- as.factor(df_proc$Weekday.Weekend)
+
+# Ordenamos las variables tipo factor
+df_proc$Weekday <- factor(df_proc$Weekday,levels= c("Monday","Tuesday","Wednesday",
+                                                        "Thursday","Friday","Saturday","Sunday"))
+df_proc$Month <- factor(df_proc$Month,levels = c("January", "February","March",
+                                                    "April", "May", "June",
+                                                     "July","August","September","October",
+                                                     "November","December"))
+df_proc$Hour.Span <- factor(df_proc$Hour.Span,levels= c("00-03h", "03-06h","06-09h","09-12h",
+                                                        "12-15h","15-18h","18-21h","21-00h"))
+df_proc$Day.Span <- factor(df_proc$Day.Span,levels= c("1-5", "6-10","11-15","16-20","21-25","26-31"))
+
+# Reordenamos las columnas del dataset
+col_order <- c("Id", "District.Name", "Neighborhood.Name", "Longitude", "Latitude",
+               "Month", "Day.Span", "Hour.Span", "Weekday", "Weekday.Weekend", "Mild.injuries",
+               "Serious.injuries", "Victims", "Vehicles.involved")
+df_proc <- df_proc[, col_order]
+head(df_proc)
+```
+
+
+## Limpieza de datos.
+
+### ¿Los datos contienen ceros o elementos vacíos? ¿Cómo gestionarías cada uno de estos casos?
+
+Vamos a estudiar los atributos que podrían ser problemáticos, para detectar que atributos requieren de tratamiento.
+
+```{r}
+str(df_proc)
+```
+
+
+```{r}
+# Validamos que no existen valores nulos
+colSums(is.na(df_proc))
+
+# Revisamos variables categóricas
+# 27 registros Unknown
+summary(df_proc$District.Name)
+
+# 27 registros Unknown
+summary(df_proc$Neighborhood.Name)
+
+# Sin valores Unknown
+summary(df_proc$Month)
+
+# Sin valores Unknown
+summary(df_proc$Day.Span)
+
+
+# Sin valores Unknown
+summary(df_proc$Hour.Span)
+
+# Sin valores Unknown
+summary(df_proc$Weekday)
+
+# Sin valores Unknown
+summary(df_proc$Weekday.Weekend)
+
+# Revisamos variables numéricas
+# Sin valores Unknown
+summary(df_proc$Longitude)
+
+# Sin valores Unknown
+summary(df_proc$Latitude)
+
+# Sin valores Unknown
+summary(df_proc$Mild.injuries)
+
+# Sin valores Unknown
+summary(df_proc$Serious.injuries)
+
+# Sin valores Unknown
+summary(df_proc$Victims)
+
+# Sin valores Unknown
+summary(df_proc$Vehicles.involved)
+```
+
+Aplicamos imputación knn para completar los valores a Unknown en “District.Name” y “Neighborhood.Name”.
+
+```{r}
+df_proc[ df_proc == "Unknown" ] <- NA
+colSums(is.na(df_proc))
+head(df_proc)
+```
+
+Ahora lanzaremos el modelo para que nos rellene el distrito y el barrio usando longitud y latitud:
+
+```{r}
+df_proc <- kNN(df_proc,variable=c("District.Name","Neighborhood.Name"),k=1,dist_var=c("Longitude","Latitude"))
+head(df_proc)
+
+```
+
+
+### Identificación y tratamiento de valores extremos
+
+```{r}
+# Definimos atributos numéricos
+var_num <- c("Longitude", "Latitude", "Mild.injuries", "Serious.injuries", "Victims", "Vehicles.involved")
+
+# Vamos a realizar visualizaciones boxplot para estas variables
+for (var in var_num){
+  main_text = paste("Boxplot Variable -", var)
+  ylab_text = var
+  boxplot(df_proc[,var],
+  main = main_text,
+  ylab = ylab_text,
+  col = "orange",
+  border = "brown",
+  horizontal = TRUE,
+  notch = TRUE
+  )
+}
+
+```
+
+Una vez realizados todos los tratamientos, vamos a exportar el dataset transformado.
+
+```{r}
+# Guardamos CSV de salida
+write_csv(df_proc, 'accidents_2017_proc.csv')
+```
+
+
+## Análisis de los datos.
+
+### Selección de los grupos de datos que se quieren analizar/comparar (planificación de los análisis a aplicar)
+
+```{r}
+# Agrupación por dia festivo o laborable
+accidentes.laborable <- df_proc[df_proc$Weekday.Weekend == "Weekday",]
+accidentes.festivo <- df_proc[df_proc$Weekday.Weekend == "Weekend",]
+
+# Agrupación por dia laborable "normal" o viernes
+accidentes.lun_vie <- df_proc[df_proc$Weekday %in% c("Monday", "Tuesday", "Wednesday", "Thursday"),]
+accidentes.viernes <- df_proc[df_proc$Weekday == "Friday",]
+
+# Agrupación por meses de verano o resto año
+`%notin%` <- Negate(`%in%`)
+accidentes.verano <- df_proc[df_proc$Month %in% c("July", "August"),]
+accidentes.no_verano <- df_proc[df_proc$Month %notin% (c("July", "August")),]
+
+# Agrupación por primeros o últimos dias del mes
+accidentes.ppioMes <- df_proc[df_proc$Day.Span == "1-5",]
+accidentes.finMes <- df_proc[df_proc$Day.Span == "26-31",]
+
+# Agrupación por franjas horarias particulares
+accidentes.madrugada <- df_proc[df_proc$Hour.Span %in% c("00-03h", "03-06h"),]
+accidentes.primeraHora <- df_proc[df_proc$Hour.Span == "06-09h",]
+accidentes.afterWork <- df_proc[df_proc$Hour.Span == "18-21h",]
+accidentes.noche <- df_proc[df_proc$Hour.Span == "21-00h",]
+accidentes.restoHoras <- df_proc[df_proc$Hour.Span %in% c("09-12h", "12-15h", "15-18h"),]
+
+```
+
+### Comprobación de la normalidad y homogeneidad de la varianza
+
+```{r}
+# En primer lugar, test Kolmogorov-Smirnov sobre variables numéricas
+# Para Mild.injuries
+ks.test(df_proc$Mild.injuries, pnorm, mean(df_proc$Mild.injuries), sd(df_proc$Mild.injuries))
+
+# Para Serious.injuries
+ks.test(df_proc$Serious.injuries, pnorm, mean(df_proc$Serious.injuries), sd(df_proc$Serious.injuries))
+
+# Para Victims
+ks.test(df_proc$Victims, pnorm, mean(df_proc$Victims), sd(df_proc$Victims))
+
+# Para Vehicles.involved
+ks.test(df_proc$Vehicles.involved, pnorm, mean(df_proc$Vehicles.involved), sd(df_proc$Vehicles.involved))
+
+
+# Adicionalmente, usando el test de Anderson-Darling, 
+# podemos ver todas las variables del dataset que no siguen una normal
+alpha = 0.05
+col.names = colnames(df_proc)
+for (i in 1:ncol(df_proc)) {
+  if (i == 1) cat("Test de Anderson-Darling: lista de variables que no siguen una distribución normal:\n")
+  if (is.integer(df_proc[,i]) | is.numeric(df_proc[,i])) {
+    p_val = ad.test(df_proc[,i])$p.value
+    if (p_val < alpha) {
+      cat(col.names[i])
+      if (i < ncol(df_proc) - 1) cat(", ")
+      if (i %% 3 == 0) cat("\n")
+    }
+  }
+}
+```
+
+##Análisis preliminar de los datos mediante gráficas/histogramas con sus atributos
+
+```{r}
+# Histogramas de variables numéricas
+hist(df_proc$Mild.injuries, col="lightblue",xlab="Heridos leves",
+     ylab="Número",main="Distribución de heridos leves")
+hist(df_proc$Serious.injuries, col="lightblue",xlab="Heridos graves",
+     ylab="Número",main="Distribución de heridos graves")
+hist(df_proc$Vehicles.involved, breaks=c(0,1,2,3,4,5,6,7,8,20), col="lightblue",xlab="Vehículos involucrados",
+     ylab="Número",main="Distribución de vehículos involucrados")
+hist(df_proc$Victims, breaks=c(0,1,2,3,4,5,6,7,8,20), col="lightblue",xlab="Víctimas totales",
+     ylab="Número",main="Distribución de víctimas")
+
+# Victimas por weekday
+accidents_weekday <- with(df_proc, table(Victims,Weekday))
+barplot(accidents_weekday,beside = TRUE, legend = TRUE, 
+        main="Víctimas de accidentes por día de la semana", 
+        xlab="Día de la semana",ylab="Número de víctimas")
+
+# Histograma de atributos
+ggplot(data = df_proc, aes(x = Weekday))+geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  ggtitle("Accidentes por día de la semana",) + xlab("Día de la semana") + ylab("Número de accidentes")
+ggplot(data = df_proc, aes(x = Month))+geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  ggtitle("Accidentes por mes",) + xlab("Mes") + ylab("Número de accidentes")
+ggplot(data = df_proc, aes(x = Hour.Span))+geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  ggtitle("Accidentes por franja horaria",) + xlab("Franja horaria") + ylab("Número de accidentes")
+ggplot(data = df_proc, aes(x = Day.Span))+geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  ggtitle("Accidentes por momento del mes",) + xlab("Momento del mes") + ylab("Número de accidentes")
+ggplot(data = df_proc, aes(x = Weekday.Weekend))+
+  geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  ggtitle("Accidentes entre semana / fin de semana",) + xlab("Entre semana / fin de semana") +
+  ylab("Número de accidentes")
+
+```
+
+### Aplicación de pruebas estadísticas para comparar los grupos de datos.
+
+**Identificar relación entre Meses/Días con mayor siniestralidad**
+
+```{r}
+# Nos quedamos con valores de interes
+df_sin <- df_proc[c('Month','Day.Span','Victims')]
+# Eliminamos los registros de accidentes sin victimas
+df_sin <- subset(df_sin, Victims!=0)
+
+# Observamos un primer histograma por número de accidentes
+ggplot(df_sin, 
+       aes(x = Month, 
+           fill = Day.Span)) + 
+  geom_bar(position = "fill") +
+  labs(y = "Percent",
+       title = "Distribución de accidentes con víctimas por Mes/Franja horaria") +
+  theme(axis.text.x = element_text(angle = 30))
+
+ggplot(df_sin, 
+       aes(x = Day.Span, 
+           fill = Month)) + 
+  geom_bar(position = "fill") +
+  labs(y = "Percent",
+       title = "Distribución de accidentes con víctimas por Franja horaria/Mes") +
+  theme(axis.text.x = element_text(angle = 30))
+
+# Agrupamos el número de víctimas por cada Month y Day.Span único
+df_sin <- 
+  df_sin %>% 
+  group_by(Month, Day.Span) %>%
+  dplyr::summarize(N_victims = n())
+
+# Finalmente representamos gráficamente los datos obtenidos
+Dias <- factor(df_sin$Day.Span)
+qplot(Month, N_victims, data = df_sin, colour = Dias, size = I(5))+
+      labs(y = "Victims",
+      title = "Total víctimas por Mes/Franja días") +
+      theme(axis.text.x = element_text(angle = 30))
+
+```
+
+Vamos a revisar con el test Chi-Square:
+
+```{r}
+# Revisamos nuestro dataframe de siniestralidad
+summary(df_sin)
+
+# Vamos a crear una variable categórica en función de N_victims
+# La idea es aplicar posteriormente el test Chi-Square entre variables categóricas
+# Hacemos representación boxplot y de densidad, para decidir como dividirla
+boxplot(df_sin$N_victims,
+  main = "Boxplot de accidentes con siniestralidad",
+  xlab = "Victims",
+  col = "orange",
+  border = "brown",
+  horizontal = TRUE,
+  notch = TRUE)
+
+ggplot(df_sin, aes(x=N_victims)) + 
+      geom_histogram(aes(y=..density..),      
+      binwidth=1, colour="black", fill="white") +
+      geom_density(alpha=.2, fill="#FF6666") +
+      geom_vline(aes(xintercept=mean(N_victims, na.rm=T)),  
+                color="red", linetype="dashed", size=1)+
+      labs(title = "Histograma de densidad de víctimas de accidentes")
+
+# Dados los datos, y por simplificarlo, vamos a dividir el segmento 50-200 vícitmas
+# en bins de 40 -> (50,89)(90,129)(130,169)(170,209)
+df_sin$Victim.Span <- as.character(df_sin$N_victims)
+df_sin[df_sin$N_victims %in% c(50:89),]$Victim.Span <- "Baja Siniestralidad"
+df_sin[df_sin$N_victims %in% c(90:129),]$Victim.Span <- "Media Siniestralidad"
+df_sin[df_sin$N_victims %in% c(130:169),]$Victim.Span <- "Alta Siniestralidad"
+df_sin[df_sin$N_victims %in% c(170:209),]$Victim.Span <- "Muy Alta Siniestralidad"
+df_sin$Victim.Span <- as.factor(df_sin$Victim.Span)
+df_sin_chisq <- subset(df_sin, select = -c(N_victims))
+
+# Ahora podemos aplicar la técnica Chi-Square para estudiar la posible relacion entre las variables
+chisq.test(df_sin_chisq$Month,df_sin_chisq$Victim.Span)
+chisq.test(df_sin_chisq$Day.Span,df_sin_chisq$Victim.Span)
+
+```
+
+**Identificar si existe mayor siniestralidad a principios o finales de mes**
+
+```{r}
+# Aprovechamos lo definido anteriormente:
+accidentes.ppioMes <- df_proc[df_proc$Day.Span == "1-5",]
+accidentes.finMes <- df_proc[df_proc$Day.Span == "26-31",]
+
+# Vamos a realizar el contraste de hipotesis para cada variable numérica que disponemos:
+# Mild.injuries, Serious.injuries, Victims, Vehicles.involved
+t.test(accidentes.ppioMes$Mild.injuries, accidentes.finMes$Mild.injuries)
+t.test(accidentes.ppioMes$Serious.injuries, accidentes.finMes$Serious.injuries)
+t.test(accidentes.ppioMes$Victims, accidentes.finMes$Victims)
+t.test(accidentes.ppioMes$Vehicles.involved, accidentes.finMes$Vehicles.involved)
+```
+
+**Identificar si existe correlación entre heridos graves en función de horario nocturno o diurno**
+
+```{r}
+# Agrupación por horas dia/noche
+accidentes.noche <- df_proc[df_proc$Hour.Span %in% c("06-09h", "09-12h", "12-15h", "15-18h", "18-21h"),]
+accidentes.dia <- df_proc[df_proc$Hour.Span %in% c("21-00h", "00-03h", "03-06h"),]
+
+# Vamos a revisar lo planteado
+t.test(accidentes.noche$Serious.injuries, accidentes.dia$Serious.injuries)
+t.test(accidentes.noche$Victims, accidentes.dia$Victims)
+```
+
+**Identificar si existe la misma frecuencia de accidentes múltiples entre semana o fin de semana**
+
+```{r}
+# Creamos un dataset de accidentes múltiples (vehículos involucrados >1)
+df_multi_acc <- df_raw[df_raw$Vehicles.involved>1,][c("Id","Weekday","Month","Day")]
+# Creamos a continuación un dataset de frecuencia de accidentes múltiples diarios
+df_multi_acc_freq <- count(df_multi_acc,vars=c("Weekday","Month","Day"))
+
+acc.multi.semana <- df_multi_acc_freq[df_multi_acc_freq$Weekday %in% c("Monday","Tuesday","Wednesday","Thursday","Friday"),]
+acc.multi.finde <- df_multi_acc_freq[df_multi_acc_freq$Weekday %in% c("Saturday","Sunday"),]
+
+# Muestro la dimensión de los datasets para saber si puedo aplicar el Teorema Central del Límite
+dim(acc.multi.finde)
+dim(acc.multi.semana)
+
+# Hago un hitograma superpuesto de ambos datasets para ver las distribuciones
+hA <- hist(acc.multi.finde$freq, plot=FALSE)
+hB <- hist(acc.multi.semana$freq, plot=FALSE)
+c1 <- rgb(255,128,0,max = 255, alpha = 50, names = "orange")
+c2 <- rgb(0,25,255, max = 255, alpha = 50, names = "blue")
+plot(hA, col = c1, xlim = c(0,50),ylim = c(0,100), xlab= "Número de accidentes múltiples", 
+    ylab="Frecuencia", main="Distribución de accidentes múltiples entre semana/fin de semana")
+plot(hB, col = c2, add=TRUE)
+legend(1, 95, legend=c("Fin de semana", "Entre semana"),
+       fill=c(c1, c2))
+
+# Lanzo un var-test para ver si hay o no igualdad de varianza
+var.test( acc.multi.finde$freq, acc.multi.semana$freq)
+
+# Como no hay igualdad de varianza, lanzo un test t para dos muestras con varianzas diferentes
+t.test(acc.multi.finde$freq, acc.multi.semana$freq, var.equal=FALSE)
+```
+
+**Identificar si existe la misma frecuencia de accidentes dentro o fuera de periodo vacacional**
+
+```{r}
+# Creamos a continuación un dataset de frecuencia de accidentes diarios
+accidentes.freq <- count(df_raw,vars=c("Month","Day"))
+
+accidentes.verano.freq <- accidentes.freq[accidentes.freq$Month %in% c("July","August"),]
+accidentes.no_verano.freq <- accidentes.freq[!(accidentes.freq$Month %in% c("July","August")),]
+
+# Muestro la dimensión de los datasets para saber si puedo aplicar el Teorema Central del Límite
+dim(accidentes.verano.freq)
+dim(accidentes.no_verano.freq)
+
+# Hago un hitograma superpuesto de ambos datasets para ver las distribuciones
+hA <- hist(accidentes.verano.freq$freq, plot=FALSE)
+hB <- hist(accidentes.no_verano.freq$freq, plot=FALSE)
+c1 <- rgb(255,128,0,max = 255, alpha = 50, names = "orange")
+c2 <- rgb(0,25,255, max = 255, alpha = 50, names = "blue")
+plot(hA, col = c1, xlim = c(0,60),ylim = c(0,80), xlab= "Número de accidentes", 
+    ylab="Frecuencia", main="Distribución de accidentes múltiples en vacaciones/no vacaciones")
+plot(hB, col = c2, add=TRUE)
+legend(1, 80, legend=c("Vacaciones", "Fuera de vacaciones"),
+       fill=c(c1, c2))
+
+
+# Lanzo un var-test para ver si hay o no igualdad de varianza
+var.test( accidentes.verano.freq$freq, accidentes.no_verano.freq$freq)
+
+# Como hay igualdad de varianza, lanzo un test t para dos muestras con varianzas iguales
+t.test(accidentes.verano.freq$freq, accidentes.no_verano.freq$freq,var.equal = TRUE)
+```
+
+**Identificar si existe correlación entre la hora y el número de accidentes**
+
+```{r}
+ggplot(data = df_raw, aes(x = Hour))+geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  ggtitle("Accidentes por hora del día",) + xlab("Hora") + ylab("Número de accidentes")
+
+ggplot(data = df_raw[df_raw$Weekday %in% c("Monday","Tuesday","Wednesday","Thursday","Friday"),], 
+       aes(x = Hour))+geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  ggtitle("Accidentes por hora del día entre semana",) + xlab("Hora") + ylab("Número de accidentes")
+
+ggplot(data = df_raw[df_raw$Weekday %in% c("Saturday","Sunday"),], 
+       aes(x = Hour))+geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  ggtitle("Accidentes por hora del día en fin de semana",) + xlab("Hora") + ylab("Número de accidentes")
+
+ggplot(data = df_raw[df_raw$Weekday %in% c("Monday","Tuesday","Wednesday","Thursday","Friday"),], 
+       aes(x = Hour))+geom_bar(fill="lightblue",color="lightblue",aes(y = (..count..)))+
+  geom_bar(data = df_raw[df_raw$Weekday %in% c("Saturday","Sunday"),],fill="lightgrey",color="lightgrey",aes(y = (..count..)))+
+  theme(legend.position="right")+ggtitle("Accidentes por hora del día",) + xlab("Hora") + ylab("Número de accidentes")
+
+```
+
+## Representación de los resultados a partir de tablas y gráficas
+
+En primer lugar visualizamos los puntos negros por volumen de accidentes.
+
+```{r}
+# Copiamos datos
+geo_accidents <- df_proc
+
+# Agrupamos en 15 bins de longitud/latitud
+geo_accidents <- transform(geo_accidents, bin_lon = cut(Longitude, 15))
+geo_accidents <- transform(geo_accidents, bin_lat = cut(Latitude, 15))
+geo_accidents <- geo_accidents %>%
+                    group_by(bin_lon, bin_lat) %>% 
+                    dplyr::summarise(mean_lon=mean(Longitude), 
+                              mean_lat=mean(Latitude), n=n())
+
+# Finalmente generamos el mapa reducido y el original
+m = mapview(geo_accidents, xcol= "mean_lon", ycol="mean_lat", cex = "n", 
+        crs = 4326, grid=FALSE, legend = FALSE)
+m_full = mapview(df_proc, xcol= "Longitude", ycol="Latitude", crs = 4326, 
+                 grid=FALSE, layer.name='Datos Accidentes BCN 2017')
+
+# Creamos .html standalone y fichero .png
+mapshot(m, file = paste0(getwd(), "/map.png"))
+mapshot(m, url = paste0(getwd(), "/map.html"), selfcontained = FALSE) 
+mapshot(m_full, url = paste0(getwd(), "/map_raw.html"), selfcontained = FALSE) 
+
+# Finalmente mostramos la imagen resultante
+knitr::include_graphics("./map.png")  
+```
+
+A continuación, vamos a visualizar un mapa únicamente con los accidentes con víctimas mortales.
+
+```{r}
+# Copiamos datos únicamente para casos con victimas
+geo_siniestralidad <- df_proc[df_proc$Victims>0,]
+
+# Agrupamos en 30 bins de longitud/latitud, y sumamos las víctimas
+geo_siniestralidad <- transform(geo_siniestralidad, bin_lon = cut(Longitude, 30))
+geo_siniestralidad <- transform(geo_siniestralidad, bin_lat = cut(Latitude, 30))
+geo_siniestralidad <- geo_siniestralidad %>%
+                    group_by(bin_lon, bin_lat) %>% 
+                    dplyr::summarise(mean_lon=mean(Longitude), 
+                              mean_lat=mean(Latitude), n=sum(Victims))
+
+# Finalmente generamos el mapa 
+m_victims = mapview(geo_siniestralidad, xcol= "mean_lon", ycol="mean_lat", cex = "n", 
+                    crs = 4326, grid=FALSE, layer.name='Accidentes con víctimas BCN 2017')
+
+# Creamos .html standalone y fichero .png
+mapshot(m_victims, file = paste0(getwd(), "/map_victims.png"))
+mapshot(m_victims, url = paste0(getwd(), "/map_victims.html"), selfcontained = FALSE) 
+
+# Finalmente mostramos la imagen resultante
+knitr::include_graphics("./map_victims.png")  
+```
+
+A continuación, vamos a visualizar un mapa únicamente con los accidentes con múltiples vehiculos implicados.
+
+```{r}
+# Copiamos datos únicamente para casos con victimas
+geo_multipleAcc <- df_proc[df_proc$Vehicles.involved>1,]
+
+# Agrupamos en 30 bins de longitud/latitud, y sumamos las víctimas
+geo_multipleAcc <- transform(geo_multipleAcc, bin_lon = cut(Longitude, 30))
+geo_multipleAcc <- transform(geo_multipleAcc, bin_lat = cut(Latitude, 30))
+geo_multipleAcc <- geo_multipleAcc %>%
+                    group_by(bin_lon, bin_lat) %>% 
+                    dplyr::summarise(mean_lon=mean(Longitude), 
+                              mean_lat=mean(Latitude), n=n())
+
+# Finalmente generamos el mapa 
+m_multipleAcc = mapview(geo_multipleAcc, xcol= "mean_lon", ycol="mean_lat", cex = "n", 
+                    crs = 4326, grid=FALSE, layer.name='Accidentes con múltiples vehiculos implicados BCN 2017')
+
+# Creamos .html standalone y fichero .png
+mapshot(m_multipleAcc, file = paste0(getwd(), "/map_multipleAcc.png"))
+mapshot(m_multipleAcc, url = paste0(getwd(), "/map_multipleAcc.html"), selfcontained = FALSE) 
+
+# Finalmente mostramos la imagen resultante
+knitr::include_graphics("./map_multipleAcc.png")  
+```
+
+Finalmente, vamos a visualizar un mapa para discernir accidentes diurnos y nocturnos.
+
+```{r}
+# Copiamos datos únicamente para casos con victimas
+geo_diaNoche <- df_proc
+geo_diaNoche$DN <- 0
+geo_diaNoche[geo_diaNoche$Hour.Span %in% c("06-09h", "09-12h", "12-15h", "15-18h", "18-21h"),17] <- 1
+geo_diaNoche[geo_diaNoche$Hour.Span %in% c("21-00h", "00-03h", "03-06h"),17] <- 2
+
+geo_dia <- df_proc[df_proc$Hour.Span %in% c("06-09h", "09-12h", "12-15h", "15-18h", "18-21h"),]
+geo_noche <- df_proc[df_proc$Hour.Span %in% c("21-00h", "00-03h", "03-06h"),]
+
+# Agrupamos en 30 bins de longitud/latitud, y sumamos las víctimas
+geo_dia <- transform(geo_dia, bin_lon = cut(Longitude, 30))
+geo_dia <- transform(geo_dia, bin_lat = cut(Latitude, 30))
+geo_dia <- geo_dia %>%
+              group_by(bin_lon, bin_lat) %>% 
+              dplyr::summarise(mean_lon=mean(Longitude), 
+                              mean_lat=mean(Latitude), n=n())
+
+geo_noche <- transform(geo_noche, bin_lon = cut(Longitude, 30))
+geo_noche <- transform(geo_noche, bin_lat = cut(Latitude, 30))
+geo_noche <- geo_noche %>%
+                group_by(bin_lon, bin_lat) %>% 
+                dplyr::summarise(mean_lon=mean(Longitude), 
+                                mean_lat=mean(Latitude), n=n())
+
+# Finalmente generamos el mapa 
+m_diaNoche = mapview(geo_dia, xcol= "mean_lon", ycol="mean_lat", cex = "n", col.regions = 'blue',
+                     alpha = 0.5,
+                      crs = 4326, grid=FALSE, layer.name='Accidentes horario diurno BCN 2017') +
+            mapview(geo_noche, xcol= "mean_lon", ycol="mean_lat", cex = "n", 
+                    col.regions = 'grey', alpha = 0.5,
+                      crs = 4326, grid=FALSE, layer.name='Accidentes horario nocturno BCN 2017')
+
+# Creamos .html standalone y fichero .png
+mapshot(m_diaNoche, file = paste0(getwd(), "/map_diaNoche.png"))
+mapshot(m_diaNoche, url = paste0(getwd(), "/map_diaNoche.html"), selfcontained = FALSE) 
+
+# Finalmente mostramos la imagen resultante
+knitr::include_graphics("./map_diaNoche.png")  
+```
+
+******
+
