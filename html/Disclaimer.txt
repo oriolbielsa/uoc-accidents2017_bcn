@@ -1,4 +1,4 @@
-Observamos que los HTML exportados en R con mapview() y mapshot() **únicamente se visualizan correctamente en la máquina que los genera**.
+Observamos que los HTML exportados en R con mapview() y mapshot() únicamente se visualizan correctamente en la máquina que los genera.
 Es decir, los ficheros HTML en este directorio, aunque tienen contenido (coordenadas, datos, etc.) por algún motivo no se pueden visualizar.
 
 Para generar estos HTML idénticos es necesario ejecutar el código RMD, instalando previamente lo siguiente:
